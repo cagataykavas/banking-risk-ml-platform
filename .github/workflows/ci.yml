@@ -7,20 +7,30 @@ on:
 jobs:
   quality:
     runs-on: ubuntu-latest
+    env:
+      PYTHONPATH: .
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
           cache: pip
-      - run: pip install -r requirements.txt
-      - run: ruff check .
-      - run: pytest -q
-      - run: python -m src.train_and_register --artifact-dir artifacts/model --registry artifacts/registry.db --rows 2000 --promote
-      - run: python -c "from app.api import health; assert health()['status'] == 'ok'"
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Ruff
+        run: ruff check .
+      - name: Compile core modules
+        run: python -m compileall -q src app
+      - name: Pytest
+        run: pytest -q
+      - name: Train and register synthetic candidate
+        run: python -m src.train_and_register --artifact-dir artifacts/model --registry artifacts/registry.db --rows 2000 --promote
+      - name: API health smoke test
+        run: python -c "from app.api import health; assert health()['status'] == 'ok'"
 
   container:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - run: docker build -t banking-risk-ml-platform:ci .
+      - name: Build Docker image
+        run: docker build -t banking-risk-ml-platform:ci .
