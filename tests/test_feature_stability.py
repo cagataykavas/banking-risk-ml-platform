@@ -1,6 +1,10 @@
 import pandas as pd
 
-from src.feature_stability import flag_unstable_features, rank_stability_matrix, summarize_importance_runs
+from src.feature_stability import (
+    flag_unstable_features,
+    rank_stability_matrix,
+    summarize_importance_runs,
+)
 
 
 def test_stable_feature_ranks_high():
