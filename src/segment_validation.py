@@ -36,7 +36,7 @@ def validate_segments(
         rows.append(
             {
                 "segment": str(segment),
-                "rows": int(len(group)),
+                "rows": len(group),
                 "small_sample_warning": bool(len(group) < min_rows),
                 "event_rate": float(np.mean(y)),
                 "mean_score": float(np.mean(score)),
