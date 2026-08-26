@@ -1,7 +1,7 @@
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass
-from typing import Iterable
 
 import numpy as np
 import pandas as pd
@@ -13,6 +13,9 @@ class CostModel:
     false_decline_cost: float = 450.0
     manual_review_cost: float = 18.0
     true_approve_value: float = 120.0
+
+
+DEFAULT_COST_MODEL = CostModel()
 
 
 @dataclass(frozen=True)
@@ -82,16 +85,20 @@ def search_policy(
     y_true: np.ndarray,
     scores: np.ndarray,
     *,
-    approve_grid: Iterable[float] = np.linspace(0.02, 0.25, 24),
-    decline_grid: Iterable[float] = np.linspace(0.45, 0.85, 21),
-    costs: CostModel = CostModel(),
+    approve_grid: Iterable[float] | None = None,
+    decline_grid: Iterable[float] | None = None,
+    costs: CostModel | None = None,
     max_review_rate: float | None = 0.30,
     min_approval_rate: float | None = 0.20,
     min_default_capture_rate: float | None = 0.80,
 ) -> pd.DataFrame:
+    active_approve_grid = approve_grid if approve_grid is not None else np.linspace(0.02, 0.25, 24)
+    active_decline_grid = decline_grid if decline_grid is not None else np.linspace(0.45, 0.85, 21)
+    active_costs = costs or DEFAULT_COST_MODEL
+
     rows: list[dict[str, float]] = []
-    for approve_below in approve_grid:
-        for decline_above in decline_grid:
+    for approve_below in active_approve_grid:
+        for decline_above in active_decline_grid:
             if approve_below >= decline_above:
                 continue
             result = expected_cost(
@@ -99,7 +106,7 @@ def search_policy(
                 scores,
                 approve_below=float(approve_below),
                 decline_above=float(decline_above),
-                costs=costs,
+                costs=active_costs,
             )
             if max_review_rate is not None and result.review_rate > max_review_rate:
                 continue
