@@ -27,6 +27,9 @@ class PromotionPolicy:
     max_review_rate_increase: float = 0.05
 
 
+DEFAULT_PROMOTION_POLICY = PromotionPolicy()
+
+
 @dataclass(frozen=True)
 class PromotionDecision:
     promote: bool
@@ -37,8 +40,9 @@ class PromotionDecision:
 def compare(
     champion: ModelSnapshot,
     challenger: ModelSnapshot,
-    policy: PromotionPolicy = PromotionPolicy(),
+    policy: PromotionPolicy | None = None,
 ) -> PromotionDecision:
+    active_policy = policy or DEFAULT_PROMOTION_POLICY
     deltas = {
         "roc_auc": challenger.roc_auc - champion.roc_auc,
         "average_precision": challenger.average_precision - champion.average_precision,
@@ -54,25 +58,25 @@ def compare(
     reasons: list[str] = []
 
     discrimination_improved = (
-        deltas["roc_auc"] >= policy.min_auc_gain
-        or deltas["average_precision"] >= policy.min_ap_gain
+        deltas["roc_auc"] >= active_policy.min_auc_gain
+        or deltas["average_precision"] >= active_policy.min_ap_gain
     )
     if not discrimination_improved:
         reasons.append("challenger does not materially improve ROC-AUC or average precision")
 
-    if deltas["brier_score"] > policy.max_brier_regression:
+    if deltas["brier_score"] > active_policy.max_brier_regression:
         reasons.append("calibration regression exceeds Brier tolerance")
 
-    if deltas["expected_cost_per_application"] > -policy.min_cost_improvement:
+    if deltas["expected_cost_per_application"] > -active_policy.min_cost_improvement:
         reasons.append("expected business cost does not improve enough")
 
-    if deltas["latency_ratio"] > policy.max_latency_ratio:
+    if deltas["latency_ratio"] > active_policy.max_latency_ratio:
         reasons.append("serving latency regression exceeds policy")
 
-    if challenger.psi_score > policy.max_psi:
+    if challenger.psi_score > active_policy.max_psi:
         reasons.append("challenger evaluation population is too unstable")
 
-    if deltas["review_rate"] > policy.max_review_rate_increase:
+    if deltas["review_rate"] > active_policy.max_review_rate_increase:
         reasons.append("challenger exceeds human-review capacity tolerance")
 
     return PromotionDecision(promote=not reasons, reasons=tuple(reasons), deltas=deltas)
