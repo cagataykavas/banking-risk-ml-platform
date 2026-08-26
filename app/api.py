@@ -69,12 +69,33 @@ def route_decision(probability: float) -> tuple[str, str]:
 
 @app.get("/health")
 def health() -> dict:
+    """Process liveness: the API can answer requests even before a model is ready."""
+    return {"status": "ok", "service": "banking-risk-ml-platform"}
+
+
+@app.get("/ready")
+def readiness() -> dict:
+    """Serving readiness: require a registered production artifact with a valid hash."""
     try:
         record = REGISTRY.latest("production")
-        verified = REGISTRY.verify_artifact(record.version)
-        return {"status": "ok" if verified else "degraded", "model_version": record.version, "artifact_verified": verified}
     except KeyError:
-        return {"status": "degraded", "reason": "no production model"}
+        return {"status": "degraded", "ready": False, "reason": "no production model"}
+
+    verified = REGISTRY.verify_artifact(record.version)
+    if not verified:
+        return {
+            "status": "degraded",
+            "ready": False,
+            "model_version": record.version,
+            "artifact_verified": False,
+            "reason": "production artifact checksum verification failed",
+        }
+    return {
+        "status": "ready",
+        "ready": True,
+        "model_version": record.version,
+        "artifact_verified": True,
+    }
 
 
 @app.get("/models")
