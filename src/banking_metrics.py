@@ -1,11 +1,17 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from itertools import pairwise
 
 import numpy as np
 import pandas as pd
 from sklearn.calibration import calibration_curve
-from sklearn.metrics import average_precision_score, brier_score_loss, roc_auc_score, roc_curve
+from sklearn.metrics import (
+    average_precision_score,
+    brier_score_loss,
+    roc_auc_score,
+    roc_curve,
+)
 
 
 @dataclass(frozen=True)
@@ -38,7 +44,7 @@ def expected_calibration_error(y_true: np.ndarray, scores: np.ndarray, bins: int
     edges = np.linspace(0.0, 1.0, bins + 1)
     ece = 0.0
     n = len(y_true)
-    for left, right in zip(edges[:-1], edges[1:]):
+    for left, right in pairwise(edges):
         if right == 1.0:
             mask = (scores >= left) & (scores <= right)
         else:
@@ -64,7 +70,9 @@ def decision_curve(
     above the upper threshold are automatically declined, and the middle band is
     routed to human review.
     """
-    thresholds = np.asarray(auto_approve_below if auto_approve_below is not None else np.linspace(0.02, 0.30, 15))
+    thresholds = np.asarray(
+        auto_approve_below if auto_approve_below is not None else np.linspace(0.02, 0.30, 15)
+    )
     rows: list[DecisionPoint] = []
 
     for threshold in thresholds:
