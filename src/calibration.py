@@ -56,6 +56,21 @@ def evaluate(method: str, y_true: np.ndarray, probability: np.ndarray) -> Calibr
     )
 
 
+def _prefit_calibrator(base: BaseEstimator, method: str) -> CalibratedClassifierCV:
+    """Create a calibrator for an already fitted estimator across sklearn versions.
+
+    Newer scikit-learn releases prefer FrozenEstimator while older supported releases
+    use cv='prefit'. The compatibility branch keeps the portfolio example runnable
+    without forcing a single narrow sklearn version.
+    """
+    try:
+        from sklearn.frozen import FrozenEstimator
+    except ImportError:
+        return CalibratedClassifierCV(base, method=method, cv="prefit")
+
+    return CalibratedClassifierCV(FrozenEstimator(base), method=method)
+
+
 def compare_calibrators(
     estimator: BaseEstimator,
     x_train,
@@ -76,7 +91,7 @@ def compare_calibrators(
 
     models: dict[str, BaseEstimator] = {"uncalibrated": base}
     for method in ["sigmoid", "isotonic"]:
-        calibrated = CalibratedClassifierCV(base, method=method, cv="prefit")
+        calibrated = _prefit_calibrator(base, method)
         calibrated.fit(x_calibration, y_calibration)
         models[method] = calibrated
 
