@@ -18,6 +18,9 @@ class LabelMaturityPolicy:
         return self.outcome_horizon_days + self.reporting_lag_days
 
 
+DEFAULT_LABEL_MATURITY_POLICY = LabelMaturityPolicy()
+
+
 @dataclass(frozen=True)
 class CohortMetric:
     cohort: str
@@ -35,7 +38,7 @@ def mature_predictions(
     outcomes: pd.DataFrame,
     *,
     as_of: pd.Timestamp,
-    policy: LabelMaturityPolicy = LabelMaturityPolicy(),
+    policy: LabelMaturityPolicy | None = None,
     id_column: str = "application_id",
     decision_time_column: str = "decision_time",
     outcome_time_column: str = "observed_at",
@@ -47,6 +50,7 @@ def mature_predictions(
     as a negative before its label horizon matures. The maturity cutoff prevents that
     common monitoring bias.
     """
+    active_policy = policy or DEFAULT_LABEL_MATURITY_POLICY
     pred = predictions.copy()
     out = outcomes.copy()
     pred[decision_time_column] = pd.to_datetime(pred[decision_time_column], utc=True)
@@ -54,7 +58,7 @@ def mature_predictions(
     current = pd.Timestamp(as_of)
     current = current.tz_localize("UTC") if current.tzinfo is None else current.tz_convert("UTC")
 
-    cutoff = current - pd.Timedelta(days=policy.maturity_days)
+    cutoff = current - pd.Timedelta(days=active_policy.maturity_days)
     eligible = pred.loc[pred[decision_time_column] <= cutoff].copy()
     joined = eligible.merge(
         out[[id_column, target_column, outcome_time_column]],
@@ -91,7 +95,10 @@ def cohort_performance(
         return pd.DataFrame(columns=CohortMetric.__annotations__.keys())
 
     labeled[decision_time_column] = pd.to_datetime(labeled[decision_time_column], utc=True)
-    labeled["cohort"] = labeled[decision_time_column].dt.to_period(frequency).astype(str)
+    # Convert through UTC-naive timestamps before period bucketing so pandas does not
+    # silently discard timezone metadata while emitting a warning.
+    cohort_time = labeled[decision_time_column].dt.tz_convert("UTC").dt.tz_localize(None)
+    labeled["cohort"] = cohort_time.dt.to_period(frequency).astype(str)
 
     rows: list[CohortMetric] = []
     for cohort, group in labeled.groupby("cohort", sort=True):
@@ -121,15 +128,16 @@ def maturity_report(
     outcomes: pd.DataFrame,
     *,
     as_of: pd.Timestamp,
-    policy: LabelMaturityPolicy = LabelMaturityPolicy(),
+    policy: LabelMaturityPolicy | None = None,
 ) -> dict[str, object]:
-    mature = mature_predictions(predictions, outcomes, as_of=as_of, policy=policy)
+    active_policy = policy or DEFAULT_LABEL_MATURITY_POLICY
+    mature = mature_predictions(predictions, outcomes, as_of=as_of, policy=active_policy)
     missing = int(mature["label_missing"].sum()) if not mature.empty else 0
     labeled = int((~mature["label_missing"]).sum()) if not mature.empty else 0
-    metrics = cohort_performance(mature, min_rows=policy.min_rows)
+    metrics = cohort_performance(mature, min_rows=active_policy.min_rows)
     return {
         "as_of": str(as_of),
-        "maturity_days": policy.maturity_days,
+        "maturity_days": active_policy.maturity_days,
         "eligible_predictions": len(mature),
         "mature_labels": labeled,
         "missing_mature_labels": missing,
