@@ -5,7 +5,7 @@ from dataclasses import dataclass
 import numpy as np
 import pandas as pd
 
-from src.cost_sensitive_policy import CostModel, expected_cost
+from src.cost_sensitive_policy import CostModel, DEFAULT_COST_MODEL, expected_cost
 
 
 @dataclass(frozen=True)
@@ -65,16 +65,17 @@ def evaluate_scenario(
     approve_below: float,
     decline_above: float,
     scenario: StressScenario,
-    costs: CostModel = CostModel(),
+    costs: CostModel | None = None,
     base_lgd: float = 0.45,
 ) -> StressResult:
+    active_costs = costs or DEFAULT_COST_MODEL
     stressed = stress_probabilities(base_pd, scenario)
     policy = expected_cost(
         y_true,
         stressed,
         approve_below=approve_below,
         decline_above=decline_above,
-        costs=costs,
+        costs=active_costs,
     )
     loss = expected_loss(
         balances,
@@ -103,8 +104,9 @@ def stress_matrix(
     approve_below: float,
     decline_above: float,
     scenarios: list[StressScenario],
-    costs: CostModel = CostModel(),
+    costs: CostModel | None = None,
 ) -> pd.DataFrame:
+    active_costs = costs or DEFAULT_COST_MODEL
     rows = [
         evaluate_scenario(
             y_true=y_true,
@@ -113,7 +115,7 @@ def stress_matrix(
             approve_below=approve_below,
             decline_above=decline_above,
             scenario=scenario,
-            costs=costs,
+            costs=active_costs,
         )
         for scenario in scenarios
     ]
