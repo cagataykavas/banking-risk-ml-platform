@@ -1,6 +1,6 @@
 # Banking Risk ML Platform
 
-A runnable, synthetic **credit-risk decision platform** that demonstrates the full path from reproducible model training to temporal validation, banking-specific metrics, expected-loss-aware thresholding, model registry, controlled deployment, online scoring, explanations, human-review routing and drift monitoring.
+A runnable, synthetic **credit-risk decision platform** that demonstrates the full path from reproducible model training to temporal validation, banking-specific metrics, expected-loss-aware thresholding, champion/challenger governance, model registry, controlled deployment, online scoring, explanations, human-review routing and drift monitoring.
 
 > All examples are synthetic. No customer, employer or confidential banking data is included.
 
@@ -10,13 +10,14 @@ A runnable, synthetic **credit-risk decision platform** that demonstrates the fu
 flowchart LR
     D[Synthetic applications] --> F[Feature pipeline]
     F --> TV[Rolling out-of-time validation]
-    TV --> M[HistGradientBoosting model]
+    TV --> M[Baseline + challenger models]
     M --> E[Banking metrics\nROC-AUC · PR-AUC · KS · Lift · Brier · ECE]
     E --> C[Cost-sensitive decision policy\nExpected loss + review capacity]
-    C --> R[(Model registry)]
-    R -->|quality gates| P[Production stage]
+    C --> CC[Champion / challenger gates]
+    CC --> R[(Model registry)]
+    R -->|approved| P[Production stage]
     P --> API[FastAPI scoring service]
-    API --> X[Local sensitivity explanation]
+    API --> X[Local sensitivity / SHAP]
     API --> G{Decision boundary}
     G -->|low risk| A[Auto approve]
     G -->|uncertain| H[Human review]
@@ -33,9 +34,39 @@ flowchart LR
 - deterministic synthetic credit-risk data generation;
 - preprocessing for numeric and categorical features;
 - `HistGradientBoostingClassifier` baseline;
+- optional **XGBoost and LightGBM challenger models**;
+- optional **Optuna** hyperparameter search with order-preserving validation;
 - rolling / expanding **out-of-time validation** with a configurable temporal gap;
 - fold-level stability reporting instead of relying on a single random split;
 - explicit separation between model ranking, probability quality and business operating points.
+
+### Advanced model research layer
+
+Install the optional research dependencies with:
+
+```bash
+pip install -r requirements-advanced.txt
+```
+
+The `advanced/` directory contains:
+
+- `model_benchmark.py` — XGBoost / LightGBM benchmark and Optuna tuning;
+- `imbalance_benchmark.py` — class weighting, over-sampling, SMOTE and under-sampling comparison;
+- `shap_explain.py` — actual SHAP TreeExplainer utilities, deliberately separated from the repository's simpler perturbation explainer.
+
+`src/feature_stability.py` measures mean importance, variance, sign consistency, top-k selection frequency and Spearman rank stability across folds/runs.
+
+### Champion / challenger governance
+
+`src/champion_challenger.py` evaluates whether a challenger should replace the current champion. Promotion is blocked when gains in discrimination come with unacceptable regressions in:
+
+- calibration / Brier score;
+- expected business cost;
+- p95 serving latency;
+- population stability;
+- human-review workload.
+
+This is intentionally stricter than selecting the model with the highest AUC.
 
 ### Banking-oriented evaluation
 
@@ -86,7 +117,8 @@ A drift signal is treated as a **diagnostic**, not proof that model performance 
 - model-agnostic one-feature counterfactual sensitivity explanations;
 - Docker image that trains/registers a public demo model before serving;
 - pytest + Ruff + container-build CI;
-- human-review evaluation utilities for override and automation-bias analysis.
+- human-review evaluation utilities for override and automation-bias analysis;
+- `MODEL_CARD.md` with intended use, limitations, monitoring and a promotion checklist.
 
 ## Quick start
 
@@ -179,13 +211,17 @@ Promotion is deliberately separate from training. A candidate can only be promot
 
 The API verifies the production artifact checksum before loading it. This makes the project useful for discussing **model lineage, reproducibility and controlled deployment**, not only classifier training.
 
+See `MODEL_CARD.md` for the public governance checklist and `src/champion_challenger.py` for executable promotion policy logic.
+
 ## Human + AI decision design
 
 The service does not equate probability with an automatic business decision. Low-risk examples can be routed automatically while uncertain/high-risk cases are deferred for explicit human review. Reviewer actions are logged separately from model outputs, making override-rate and automation-bias analysis possible with the repository's evaluation utilities.
 
 ## Explanation note
 
-`src/explainability.py` implements transparent local perturbation analysis rather than pretending a custom heuristic is SHAP. Each feature is replaced with a conservative reference value and the change in predicted probability is measured. The API labels the method and its limitation explicitly.
+`src/explainability.py` implements transparent local perturbation analysis rather than pretending a custom heuristic is SHAP. Each feature is replaced with a conservative reference value and the change in predicted probability is measured.
+
+For supported tree challengers, `advanced/shap_explain.py` uses the actual SHAP library and labels the output accordingly. Attribution is treated as a diagnostic explanation, not a causal claim.
 
 ## Cross-repository platform story
 
@@ -198,25 +234,21 @@ This repository is the **model/risk-decision layer** of a larger public banking 
 - `model-drift-monitoring` — generic production drift patterns;
 - `financial-crime-copilot` — structured human-review workflows.
 
-## Interview battle sheet
+## Interview preparation material
 
-`docs/senior_data_science_interview.md` contains **50 concise questions and answers** covering:
-
-- end-to-end ML;
-- banking metrics and calibration;
-- statistics;
-- temporal validation and leakage;
-- drift;
-- Spark performance;
-- GCP / Vertex AI;
-- deployment and model governance;
-- business framing and senior-level behavioral questions.
+- `docs/senior_data_science_interview.md` — **50 concise questions and answers** covering end-to-end ML, banking metrics, statistics, Spark, GCP, governance and business framing.
+- `docs/MOCK_TAKE_HOME.md` — a full synthetic Global Banking take-home covering leakage, temporal validation, Spark, GCP, threshold economics, monitoring and system design.
+- `sql/interview_queries.sql` — SQL patterns for temporal features, windows, cohorts, anti-joins, deduplication and analytical queries.
 
 ## Interview topics this repository supports
 
 - ROC-AUC vs PR-AUC vs KS vs Lift;
 - probability calibration and Brier score;
-- class imbalance and decision thresholds;
+- class imbalance, SMOTE and threshold tuning;
+- XGBoost / LightGBM champion-challenger comparison;
+- hyperparameter optimization with Optuna;
+- feature stability across folds;
+- SHAP vs perturbation-based sensitivity analysis;
 - expected loss and cost-sensitive policies;
 - approval / bad-rate / review-capacity trade-offs;
 - random split vs out-of-time validation;
