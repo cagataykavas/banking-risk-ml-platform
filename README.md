@@ -1,8 +1,8 @@
 # Banking Risk ML Platform
 
-A runnable, synthetic **credit-risk decision platform** that demonstrates the full path from reproducible model training to temporal validation, banking-specific metrics, expected-loss-aware thresholding, champion/challenger governance, model registry, controlled deployment, online scoring, explanations, human-review routing and drift monitoring.
+A runnable, synthetic **global-banking risk decision platform** spanning data-safe validation, probability modeling, business policy, model governance, deployment and post-production monitoring.
 
-> All examples are synthetic. No customer, employer or confidential banking data is included.
+> **Portfolio reference implementation.** All data, costs, policies and outcomes are synthetic. No customer, employer or confidential banking data is included, and this repository is not presented as a regulatory credit model.
 
 ## Architecture
 
@@ -10,115 +10,223 @@ A runnable, synthetic **credit-risk decision platform** that demonstrates the fu
 flowchart LR
     D[Synthetic applications] --> F[Feature pipeline]
     F --> TV[Rolling out-of-time validation]
-    TV --> M[Baseline + challenger models]
-    M --> E[Banking metrics\nROC-AUC · PR-AUC · KS · Lift · Brier · ECE]
-    E --> C[Cost-sensitive decision policy\nExpected loss + review capacity]
+    TV --> M[Baseline + challengers]
+    M --> CAL[Probability calibration]
+    CAL --> E[ROC · PR · KS · Lift · Brier · ECE]
+    E --> C[Expected-loss-aware policy]
     C --> CC[Champion / challenger gates]
     CC --> R[(Model registry)]
-    R -->|approved| P[Production stage]
-    P --> API[FastAPI scoring service]
-    API --> X[Local sensitivity / SHAP]
-    API --> G{Decision boundary}
-    G -->|low risk| A[Auto approve]
-    G -->|uncertain| H[Human review]
-    G -->|high risk| DCL[Auto decline / manual policy]
-    H --> L[Reviewer decision log]
-    P --> MON[Drift monitoring\nPSI · KS · score stability]
-    MON -->|warning / alert| GOV[Revalidation / retraining decision]
+    R -->|approved| P[Production model]
+    P --> API[FastAPI scoring]
+    API --> G{Approve / Review / Decline}
+    G --> H[Human review]
+    P --> MON[Feature + score drift]
+    MON --> DL[Delayed-label cohort monitor]
+    DL --> ST[Stress + segment stability]
+    ST --> GOV[Revalidate / retrain / rollback]
 ```
 
-## What is implemented
+## Why this project exists
 
-### Modeling and validation
+A banking model is not finished when `fit()` returns. Production decisions depend on questions such as:
+
+- Was validation truly forward-looking, or did future information leak into training?
+- Are probabilities calibrated enough to support economic decisions?
+- What threshold policy fits risk appetite **and** manual-review capacity?
+- Does a challenger improve business outcomes without breaking latency or calibration?
+- How do we monitor performance when labels arrive 60–90+ days later?
+- What happens under population shift or an adverse economic scenario?
+- Is overall performance hiding a weak country, channel or customer segment?
+- Can every deployed artifact and human override be audited?
+
+This repository makes those concerns executable instead of hiding them in presentation slides.
+
+## Core implementation
+
+### 1. Modeling and out-of-time validation
 
 - deterministic synthetic credit-risk data generation;
-- preprocessing for numeric and categorical features;
-- `HistGradientBoostingClassifier` baseline;
-- optional **XGBoost and LightGBM challenger models**;
-- optional **Optuna** hyperparameter search with order-preserving validation;
-- rolling / expanding **out-of-time validation** with a configurable temporal gap;
-- fold-level stability reporting instead of relying on a single random split;
-- explicit separation between model ranking, probability quality and business operating points.
+- numeric/categorical preprocessing;
+- `HistGradientBoostingClassifier` production-style baseline;
+- optional **XGBoost** and **LightGBM** challengers;
+- optional **Optuna** hyperparameter tuning;
+- expanding / rolling **out-of-time validation** with configurable temporal gaps;
+- fold-level stability rather than a single random holdout.
 
-### Advanced model research layer
+`src/temporal_validation.py` deliberately keeps future periods out of training:
 
-Install the optional research dependencies with:
+```text
+historical train ------> gap -> future validation
+historical train grows --------> gap -> later validation
+```
+
+### 2. Banking-oriented probability metrics
+
+`src/banking_metrics.py` covers:
+
+- ROC-AUC;
+- average precision / PR-AUC;
+- KS statistic;
+- Lift@10%;
+- Brier score;
+- expected calibration error;
+- calibration MAE;
+- approval / review / bad-rate operating curves.
+
+The repository treats discrimination, probability quality and business policy as different questions.
+
+### 3. Probability calibration
+
+`src/calibration.py` compares:
+
+- uncalibrated probabilities;
+- sigmoid / Platt-style calibration;
+- isotonic calibration.
+
+Training, calibration and final evaluation are kept separate. The utility supports modern `FrozenEstimator`-based scikit-learn calibration while retaining compatibility with older supported APIs.
+
+### 4. Cost-sensitive decision policy
+
+`src/cost_sensitive_policy.py` maps probability estimates onto explicit economics:
+
+- false-approval cost;
+- false-decline cost;
+- manual-review cost;
+- value of a correctly approved application;
+- maximum review capacity;
+- minimum approval rate;
+- minimum adverse-event capture;
+- two-threshold approve / review / decline search;
+- illustrative `Expected Loss = PD × LGD × EAD` decomposition.
+
+```python
+from src.cost_sensitive_policy import CostModel, search_policy
+
+policies = search_policy(
+    y_true,
+    probabilities,
+    costs=CostModel(
+        false_approve_cost=8500,
+        false_decline_cost=450,
+        manual_review_cost=18,
+        true_approve_value=120,
+    ),
+    max_review_rate=0.25,
+    min_approval_rate=0.30,
+    min_default_capture_rate=0.80,
+)
+```
+
+The question becomes **“Which policy satisfies business/risk constraints at lowest expected cost?”**, not merely “Which threshold maximizes F1?”
+
+### 5. Champion / challenger governance
+
+`src/champion_challenger.py` blocks a challenger when improved discrimination comes with unacceptable regressions in:
+
+- Brier/calibration quality;
+- expected business cost;
+- p95 inference latency;
+- PSI / evaluation-population stability;
+- human-review workload.
+
+A challenger does not become production merely because its AUC is 0.004 higher.
+
+### 6. Drift and segment stability
+
+`src/drift_monitoring.py` provides PSI and two-sample KS diagnostics for features and model scores.
+
+`src/segment_validation.py` breaks performance and decision outcomes down by country/channel/segment:
+
+- sample size and event rate;
+- ROC-AUC / AP / Brier;
+- approval / review / decline rates;
+- bad rate among approved cases;
+- adverse-event capture;
+- investigation flags for large gaps or tiny samples.
+
+A drift statistic is treated as a **diagnostic signal**, not proof that predictive performance failed.
+
+### 7. Delayed-label monitoring
+
+`src/delayed_label_monitoring.py` addresses a common banking monitoring trap: a recent account with no 90-day bad outcome yet is **not automatically a negative label**.
+
+The monitor:
+
+1. applies an outcome-horizon + reporting-lag maturity cutoff;
+2. joins only eligible predictions to outcomes;
+3. exposes missing mature labels as data-quality failures;
+4. reports mature cohorts separately;
+5. calculates AUC, AP, Brier and calibration gaps only when labels are actually mature.
+
+This separates immediate **input/score drift** monitoring from later **outcome-based performance** monitoring.
+
+### 8. Stress testing
+
+`src/stress_testing.py` applies synthetic deterioration scenarios through:
+
+- log-odds shifts in PD;
+- PD multipliers;
+- LGD multipliers;
+- exposure/balance multipliers.
+
+It reports expected-loss uplift and how the fixed approve/review/decline policy behaves under mild, recession and severe-downturn scenarios.
+
+### 9. Feature stability
+
+`src/feature_stability.py` measures whether feature importance is reproducible across folds/runs using:
+
+- mean absolute importance;
+- standard deviation / coefficient of variation;
+- sign consistency;
+- top-k frequency;
+- Spearman rank stability.
+
+This is useful when a model looks strong overall but its apparent drivers change wildly between periods.
+
+## Advanced research layer
+
+Install optional dependencies:
 
 ```bash
 pip install -r requirements-advanced.txt
 ```
 
-The `advanced/` directory contains:
+Then explore:
 
-- `model_benchmark.py` — XGBoost / LightGBM benchmark and Optuna tuning;
-- `imbalance_benchmark.py` — class weighting, over-sampling, SMOTE and under-sampling comparison;
-- `shap_explain.py` — actual SHAP TreeExplainer utilities, deliberately separated from the repository's simpler perturbation explainer.
+- `advanced/model_benchmark.py` — XGBoost + LightGBM + Optuna;
+- `advanced/imbalance_benchmark.py` — class weighting, random over/under-sampling and SMOTE;
+- `advanced/shap_explain.py` — actual SHAP `TreeExplainer` utilities;
+- `advanced/scorecard_woe.py` — Weight of Evidence / Information Value scorecard lab.
 
-`src/feature_stability.py` measures mean importance, variance, sign consistency, top-k selection frequency and Spearman rank stability across folds/runs.
+WoE/IV thresholds are presented as heuristics rather than laws; suspiciously high IV is explicitly treated as a reason to investigate leakage or instability.
 
-### Champion / challenger governance
+## Explainability
 
-`src/champion_challenger.py` evaluates whether a challenger should replace the current champion. Promotion is blocked when gains in discrimination come with unacceptable regressions in:
+Two explanation approaches are intentionally kept distinct:
 
-- calibration / Brier score;
-- expected business cost;
-- p95 serving latency;
-- population stability;
-- human-review workload.
+1. `src/explainability.py` — transparent local **perturbation/sensitivity analysis**;
+2. `advanced/shap_explain.py` — actual **SHAP** for supported tree models.
 
-This is intentionally stricter than selecting the model with the highest AUC.
+The project does not rename an arbitrary heuristic “SHAP.” Attribution is treated as diagnostic evidence, not causality.
 
-### Banking-oriented evaluation
+## Selection bias and reject inference
 
-`src/banking_metrics.py` implements:
+`docs/selection_bias_and_reject_inference.md` discusses why outcomes may only be observed for applicants accepted by a historical policy.
 
-- ROC-AUC;
-- average precision / PR-AUC;
-- Brier score;
-- KS statistic;
-- Lift@10%;
-- expected calibration error;
-- calibration MAE;
-- approval / bad-rate / review-rate decision curves.
+It covers parceling, weighting, model-based inference and controlled exploration as assumption-dependent approaches, and emphasizes that **SMOTE does not solve reject inference**.
 
-`src/cost_sensitive_policy.py` then connects model outputs to business decisions with:
+## Registry, serving and auditability
 
-- asymmetric false-approve and false-decline costs;
-- manual-review cost;
-- optional value of a correctly approved customer;
-- review-capacity constraints;
-- minimum approval-rate constraints;
-- minimum default-capture constraints;
-- grid search over two-threshold approve / review / decline policies;
-- a transparent `PD × LGD × EAD` expected-loss example.
-
-This is intentionally more realistic than treating a probability threshold as a purely statistical tuning parameter.
-
-### Drift and production stability
-
-`src/drift_monitoring.py` provides:
-
-- Population Stability Index (PSI);
-- two-sample KS diagnostics;
-- feature-level drift reports;
-- model-score distribution monitoring;
-- monthly drift reports against a chosen reference period;
-- stable / warning / alert severity bands.
-
-A drift signal is treated as a **diagnostic**, not proof that model performance failed. Outcome-based performance must be re-evaluated when labels become available.
-
-### Governance and serving
-
-- persistent model registry with immutable version metadata and SHA-256 artifact verification;
-- candidate → production → archived lifecycle and explicit promotion reasons;
-- quality-gated `train_and_register` workflow;
-- FastAPI `/score`, `/models`, `/health` and human-review endpoints;
-- conservative automation boundaries: uncertain cases are intentionally deferred;
-- model-agnostic one-feature counterfactual sensitivity explanations;
-- Docker image that trains/registers a public demo model before serving;
-- pytest + Ruff + container-build CI;
-- human-review evaluation utilities for override and automation-bias analysis;
-- `MODEL_CARD.md` with intended use, limitations, monitoring and a promotion checklist.
+- persistent SQLite model registry;
+- immutable model metadata;
+- SHA-256 artifact verification;
+- candidate → production → archived lifecycle;
+- explicit promotion reasons;
+- FastAPI `/score`, `/models`, `/health` and review endpoints;
+- Docker image;
+- human override / automation-bias evaluation;
+- pytest, Ruff and container-build CI;
+- `MODEL_CARD.md` governance checklist.
 
 ## Quick start
 
@@ -136,127 +244,29 @@ python -m src.train_and_register \
 uvicorn app.api:app --reload
 ```
 
-Open `/docs` for the generated OpenAPI UI.
+Open `/docs` for the generated OpenAPI interface.
 
-### Example score request
+## Public banking platform story
 
-```json
-{
-  "application_id": "app-1001",
-  "age": 34,
-  "income": 72000,
-  "debt": 11000,
-  "utilization": 0.42,
-  "late_payments": 1,
-  "account_age_months": 61,
-  "employment": "salaried",
-  "housing": "mortgage"
-}
-```
+This repository is the **risk/model-decision layer** of a larger public stack:
 
-The response contains the default probability, model version, decision route and a local explanation with the highest-sensitivity features.
+| Repository | Role |
+|---|---|
+| `fintech-data-platform` | Contracts, Bronze/Silver, Parquet, dbt, Airflow, PostgreSQL, PySpark batch + Structured Streaming |
+| `banking-risk-ml-platform` | Training, validation, calibration, policy, governance, serving, monitoring |
+| `fraud-streaming-platform` | Streaming fraud signals and analyst-review routing |
+| `transaction-graph-fraud` | Graph-based transaction-risk patterns |
+| `gcp-ml-platform` | BigQuery + Vertex AI pipelines, model registry and endpoint examples |
+| `model-drift-monitoring` | Generic production drift patterns |
+| `financial-crime-copilot` | Structured human-review / evidence workflows |
 
-## Temporal validation
+## Interview preparation
 
-`src/temporal_validation.py` provides forward-looking evaluation folds:
+- `docs/senior_data_science_interview.md` — ~50 concise ML/statistics/Spark/GCP/business questions;
+- `docs/MOCK_TAKE_HOME.md` — full synthetic Global Banking take-home;
+- `sql/interview_queries.sql` — windows, temporal features, cohorts, anti-joins, deduplication and analytical SQL;
+- `MODEL_CARD.md` — model-risk and deployment governance checklist.
 
-```text
-historical training window
-        ↓
-configurable gap
-        ↓
-future test month
-        ↓
-expand training window
-        ↓
-next future test month
-```
+## Topics this repository can support in an interview
 
-This avoids the common portfolio mistake of randomly mixing future observations into training for a problem that will be deployed forward in time.
-
-## Expected-loss and decision-policy example
-
-```python
-from src.cost_sensitive_policy import CostModel, search_policy
-
-policies = search_policy(
-    y_true,
-    default_probabilities,
-    costs=CostModel(
-        false_approve_cost=8500,
-        false_decline_cost=450,
-        manual_review_cost=18,
-        true_approve_value=120,
-    ),
-    max_review_rate=0.25,
-    min_approval_rate=0.30,
-    min_default_capture_rate=0.80,
-)
-
-print(policies.head())
-```
-
-Instead of asking only *"which threshold maximizes F1?"*, the system can discuss *"which policy meets review capacity while controlling bad approvals and expected economic cost?"*
-
-## Model governance
-
-Promotion is deliberately separate from training. A candidate can only be promoted when explicit quality gates pass. The registry stores:
-
-- model version;
-- artifact path and SHA-256 checksum;
-- creation timestamp;
-- evaluation metrics;
-- deployment stage;
-- promotion reason/history.
-
-The API verifies the production artifact checksum before loading it. This makes the project useful for discussing **model lineage, reproducibility and controlled deployment**, not only classifier training.
-
-See `MODEL_CARD.md` for the public governance checklist and `src/champion_challenger.py` for executable promotion policy logic.
-
-## Human + AI decision design
-
-The service does not equate probability with an automatic business decision. Low-risk examples can be routed automatically while uncertain/high-risk cases are deferred for explicit human review. Reviewer actions are logged separately from model outputs, making override-rate and automation-bias analysis possible with the repository's evaluation utilities.
-
-## Explanation note
-
-`src/explainability.py` implements transparent local perturbation analysis rather than pretending a custom heuristic is SHAP. Each feature is replaced with a conservative reference value and the change in predicted probability is measured.
-
-For supported tree challengers, `advanced/shap_explain.py` uses the actual SHAP library and labels the output accordingly. Attribution is treated as a diagnostic explanation, not a causal claim.
-
-## Cross-repository platform story
-
-This repository is the **model/risk-decision layer** of a larger public banking portfolio:
-
-- `fintech-data-platform` — data contracts, Bronze/Silver layers, Airflow, dbt, PostgreSQL and PySpark feature engineering;
-- `fraud-streaming-platform` — streaming fraud signals and analyst review queues;
-- `transaction-graph-fraud` — graph-based transaction-risk patterns;
-- `gcp-ml-platform` — BigQuery and Vertex AI deployment/pipeline examples;
-- `model-drift-monitoring` — generic production drift patterns;
-- `financial-crime-copilot` — structured human-review workflows.
-
-## Interview preparation material
-
-- `docs/senior_data_science_interview.md` — **50 concise questions and answers** covering end-to-end ML, banking metrics, statistics, Spark, GCP, governance and business framing.
-- `docs/MOCK_TAKE_HOME.md` — a full synthetic Global Banking take-home covering leakage, temporal validation, Spark, GCP, threshold economics, monitoring and system design.
-- `sql/interview_queries.sql` — SQL patterns for temporal features, windows, cohorts, anti-joins, deduplication and analytical queries.
-
-## Interview topics this repository supports
-
-- ROC-AUC vs PR-AUC vs KS vs Lift;
-- probability calibration and Brier score;
-- class imbalance, SMOTE and threshold tuning;
-- XGBoost / LightGBM champion-challenger comparison;
-- hyperparameter optimization with Optuna;
-- feature stability across folds;
-- SHAP vs perturbation-based sensitivity analysis;
-- expected loss and cost-sensitive policies;
-- approval / bad-rate / review-capacity trade-offs;
-- random split vs out-of-time validation;
-- feature and score drift with PSI / KS;
-- model registry and promotion gates;
-- online vs batch risk scoring;
-- human escalation and automation bias;
-- feature preprocessing and leakage;
-- artifact integrity and reproducibility;
-- FastAPI serving, Docker and CI/CD;
-- explanation methods and their limitations.
+**Temporal leakage · probability calibration · ROC vs PR-AUC · KS · lift · Brier · expected loss · PD/LGD/EAD · threshold economics · human-review capacity · champion/challenger · XGBoost · LightGBM · Optuna · class imbalance · SMOTE limitations · SHAP · WoE/IV · PSI · delayed labels · segment stability · stress testing · reject inference · model registry · FastAPI · Docker · CI/CD · auditability.**
