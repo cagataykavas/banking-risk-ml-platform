@@ -1,7 +1,11 @@
 import numpy as np
 from sklearn.linear_model import LogisticRegression
 
-from src.calibration import compare_calibrators, expected_calibration_error, reliability_table
+from src.calibration import (
+    compare_calibrators,
+    expected_calibration_error,
+    reliability_table,
+)
 
 
 def test_ece_is_zero_for_perfect_two_bin_forecast():
