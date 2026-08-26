@@ -4,11 +4,16 @@ from dataclasses import dataclass
 
 import numpy as np
 import pandas as pd
-from imblearn.over_sampling import RandomOverSampler, SMOTE
+from imblearn.over_sampling import SMOTE, RandomOverSampler
 from imblearn.pipeline import Pipeline as ImbPipeline
 from imblearn.under_sampling import RandomUnderSampler
 from sklearn.linear_model import LogisticRegression
-from sklearn.metrics import average_precision_score, brier_score_loss, precision_recall_curve, roc_auc_score
+from sklearn.metrics import (
+    average_precision_score,
+    brier_score_loss,
+    precision_recall_curve,
+    roc_auc_score,
+)
 from sklearn.model_selection import train_test_split
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
@@ -24,7 +29,11 @@ class Result:
     threshold_at_target_precision: float
 
 
-def recall_at_precision(y_true: np.ndarray, scores: np.ndarray, target_precision: float = 0.40) -> tuple[float, float]:
+def recall_at_precision(
+    y_true: np.ndarray,
+    scores: np.ndarray,
+    target_precision: float = 0.40,
+) -> tuple[float, float]:
     precision, recall, thresholds = precision_recall_curve(y_true, scores)
     valid = np.where(precision[:-1] >= target_precision)[0]
     if len(valid) == 0:
