@@ -25,8 +25,9 @@ jobs:
         run: pytest -q
       - name: Train and register synthetic candidate
         run: python -m src.train_and_register --artifact-dir artifacts/model --registry artifacts/registry.db --rows 2000 --promote
-      - name: API health smoke test
-        run: python -c "from app.api import health; assert health()['status'] == 'ok'"
+      - name: API liveness and readiness smoke test
+        run: |
+          python -c "from app.api import health, readiness; assert health()['status'] == 'ok'; assert readiness()['status'] in {'ready', 'degraded'}"
 
   container:
     runs-on: ubuntu-latest
