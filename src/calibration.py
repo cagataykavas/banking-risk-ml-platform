@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from itertools import pairwise
 
 import numpy as np
 import pandas as pd
@@ -22,7 +23,7 @@ def expected_calibration_error(y_true: np.ndarray, probability: np.ndarray, bins
     edges = np.linspace(0.0, 1.0, bins + 1)
     total = len(y_true)
     ece = 0.0
-    for left, right in zip(edges[:-1], edges[1:], strict=True):
+    for left, right in pairwise(edges):
         if right == 1.0:
             mask = (probability >= left) & (probability <= right)
         else:
