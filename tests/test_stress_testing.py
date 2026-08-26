@@ -1,6 +1,11 @@
 import numpy as np
 
-from src.stress_testing import StressScenario, default_scenarios, stress_matrix, stress_probabilities
+from src.stress_testing import (
+    StressScenario,
+    default_scenarios,
+    stress_matrix,
+    stress_probabilities,
+)
 
 
 def test_positive_logit_shift_increases_mean_pd():
