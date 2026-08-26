@@ -5,7 +5,7 @@ from dataclasses import dataclass
 import numpy as np
 import pandas as pd
 
-from src.cost_sensitive_policy import CostModel, DEFAULT_COST_MODEL, expected_cost
+from src.cost_sensitive_policy import DEFAULT_COST_MODEL, CostModel, expected_cost
 
 
 @dataclass(frozen=True)
