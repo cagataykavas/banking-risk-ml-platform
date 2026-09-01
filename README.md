@@ -13,7 +13,7 @@ flowchart LR
     TV --> M[Baseline + challengers]
     M --> CAL[Probability calibration]
     CAL --> E[ROC · PR · KS · Lift · Brier · ECE]
-    E --> C[Expected-loss-aware policy]
+    E --> C[Expected-loss + value policy]
     C --> CC[Champion / challenger gates]
     CC --> R[(Model registry)]
     R -->|approved| P[Production model]
@@ -119,7 +119,26 @@ policies = search_policy(
 
 The question becomes **“Which policy satisfies business/risk constraints at lowest expected cost?”**, not merely “Which threshold maximizes F1?”
 
-### 5. Champion / challenger governance
+### 5. Decision economics and review capacity
+
+`src/decision_economics.py` adds a second, deliberately transparent offline policy simulator. It expresses the approve/review/decline boundary in terms of:
+
+- expected account revenue;
+- loss given default;
+- manual-review cost;
+- false-decline opportunity cost;
+- review-team default capture rate;
+- maximum review capacity.
+
+It grid-searches two-threshold policies and ranks feasible policies by expected value per application. The implementation explicitly states its limitation: this is a **synthetic offline business simulation**, not a causal profit estimator. Real lending economics would also require exposure, limits, selection effects, discounting and portfolio constraints.
+
+```bash
+python -m src.decision_economics
+```
+
+That distinction matters in interviews: model ranking metrics, calibrated probabilities and business decision utility are connected, but they are not interchangeable.
+
+### 6. Champion / challenger governance
 
 `src/champion_challenger.py` blocks a challenger when improved discrimination comes with unacceptable regressions in:
 
@@ -131,7 +150,7 @@ The question becomes **“Which policy satisfies business/risk constraints at lo
 
 A challenger does not become production merely because its AUC is 0.004 higher.
 
-### 6. Drift and segment stability
+### 7. Drift and segment stability
 
 `src/drift_monitoring.py` provides PSI and two-sample KS diagnostics for features and model scores.
 
@@ -146,7 +165,7 @@ A challenger does not become production merely because its AUC is 0.004 higher.
 
 A drift statistic is treated as a **diagnostic signal**, not proof that predictive performance failed.
 
-### 7. Delayed-label monitoring
+### 8. Delayed-label monitoring
 
 `src/delayed_label_monitoring.py` addresses a common banking monitoring trap: a recent account with no 90-day bad outcome yet is **not automatically a negative label**.
 
@@ -160,7 +179,7 @@ The monitor:
 
 This separates immediate **input/score drift** monitoring from later **outcome-based performance** monitoring.
 
-### 8. Stress testing
+### 9. Stress testing
 
 `src/stress_testing.py` applies synthetic deterioration scenarios through:
 
@@ -171,7 +190,7 @@ This separates immediate **input/score drift** monitoring from later **outcome-b
 
 It reports expected-loss uplift and how the fixed approve/review/decline policy behaves under mild, recession and severe-downturn scenarios.
 
-### 9. Feature stability
+### 10. Feature stability
 
 `src/feature_stability.py` measures whether feature importance is reproducible across folds/runs using:
 
@@ -228,6 +247,26 @@ It covers parceling, weighting, model-based inference and controlled exploration
 - pytest, Ruff and container-build CI;
 - `MODEL_CARD.md` governance checklist.
 
+## GCP reference deployment
+
+`infra/gcp/main.tf` now maps the public scoring/monitoring design onto concrete GCP services:
+
+```mermaid
+flowchart LR
+    CI[CI / container build] --> AR[Artifact Registry]
+    AR --> CR[Cloud Run FastAPI]
+    GCS[(Versioned GCS model artifacts)] --> CR
+    CR --> PS[Pub/Sub scoring events]
+    PS --> BQ[(BigQuery monitoring)]
+    BQ --> M[Drift + delayed-label evaluation]
+```
+
+The Terraform reference includes required APIs, Artifact Registry, a versioned artifact bucket, BigQuery monitoring dataset, Pub/Sub topic, dedicated runtime service account, minimal runtime IAM and a bounded-autoscaling Cloud Run v2 service.
+
+See `docs/gcp_deployment.md` for the deployment/rollback story, immediate-vs-delayed monitoring split, and senior-level Cloud Run vs GKE discussion.
+
+The public demo intentionally does **not** pretend to encode organization-specific banking controls such as VPC Service Controls, enterprise ingress, regulated data classification or production SLOs.
+
 ## Quick start
 
 ```bash
@@ -269,4 +308,4 @@ This repository is the **risk/model-decision layer** of a larger public stack:
 
 ## Topics this repository can support in an interview
 
-**Temporal leakage · probability calibration · ROC vs PR-AUC · KS · lift · Brier · expected loss · PD/LGD/EAD · threshold economics · human-review capacity · champion/challenger · XGBoost · LightGBM · Optuna · class imbalance · SMOTE limitations · SHAP · WoE/IV · PSI · delayed labels · segment stability · stress testing · reject inference · model registry · FastAPI · Docker · CI/CD · auditability.**
+**Temporal leakage · probability calibration · ROC vs PR-AUC · KS · lift · Brier · expected loss · PD/LGD/EAD · threshold economics · expected-value policy optimization · human-review capacity · champion/challenger · XGBoost · LightGBM · Optuna · class imbalance · SMOTE limitations · SHAP · WoE/IV · PSI · delayed labels · segment stability · stress testing · reject inference · model registry · FastAPI · Docker · CI/CD · GCP · Cloud Run · BigQuery · Pub/Sub · Artifact Registry · auditability.**
