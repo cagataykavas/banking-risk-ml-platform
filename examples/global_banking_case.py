@@ -10,7 +10,14 @@ import numpy as np
 
 from src.banking_metrics import validation_report
 from src.decision_economics import EconomicsAssumptions, optimize_thresholds
-from src.risk_pipeline import CATEGORICAL, NUMERIC, TARGET, build_pipeline, make_dataset, temporal_split
+from src.risk_pipeline import (
+    CATEGORICAL,
+    NUMERIC,
+    TARGET,
+    build_pipeline,
+    make_dataset,
+    temporal_split,
+)
 from src.stress_testing import default_scenarios, stress_matrix
 
 
@@ -138,21 +145,18 @@ def markdown_summary(report: dict[str, Any]) -> str:
             "{policy_cost_per_application:.2f} | {loss_uplift_vs_baseline:.1%} |".format(**row)
         )
 
-    lines.extend(
-        [
-            "",
-            "## Interpretation",
-            "",
-            "The model-selection question and the business-policy question are intentionally separate. "
-            "Discrimination/calibration metrics describe probability quality; the two-threshold policy "
-            "adds review capacity and synthetic economics; stress testing then asks how a fixed policy "
-            "behaves when PD/LGD/exposure assumptions deteriorate.",
-            "",
-            "The debt field is used only as a synthetic exposure proxy in this public stress example. "
-            "A real banking implementation would require governed EAD/LGD definitions, selection-bias "
-            "analysis, portfolio constraints, mature outcomes and policy approval.",
-        ]
+    interpretation = (
+        "The model-selection question and the business-policy question are intentionally separate. "
+        "Discrimination/calibration metrics describe probability quality; the two-threshold policy "
+        "adds review capacity and synthetic economics; stress testing then asks how a fixed policy "
+        "behaves when PD/LGD/exposure assumptions deteriorate."
     )
+    limitations = (
+        "The debt field is used only as a synthetic exposure proxy in this public stress example. "
+        "A real banking implementation would require governed EAD/LGD definitions, selection-bias "
+        "analysis, portfolio constraints, mature outcomes and policy approval."
+    )
+    lines.extend(["", "## Interpretation", "", interpretation, "", limitations])
     return "\n".join(lines) + "\n"
 
 
