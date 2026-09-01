@@ -20,14 +20,31 @@ jobs:
       - name: Ruff
         run: ruff check .
       - name: Compile core modules
-        run: python -m compileall -q src app
+        run: python -m compileall -q src app examples
       - name: Pytest
         run: pytest -q
       - name: Train and register synthetic candidate
         run: python -m src.train_and_register --artifact-dir artifacts/model --registry artifacts/registry.db --rows 2000 --promote
+      - name: Global Banking decision case
+        run: |
+          python examples/global_banking_case.py \
+            --rows 2500 \
+            --output artifacts/global_banking_case.json \
+            --markdown artifacts/global_banking_case.md \
+            > /tmp/global-banking-case.stdout.json
       - name: API liveness and readiness smoke test
         run: |
           python -c "from app.api import health, readiness; assert health()['status'] == 'ok'; assert readiness()['status'] in {'ready', 'degraded'}"
+      - name: Publish banking evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: global-banking-ml-evidence
+          path: |
+            artifacts/global_banking_case.json
+            artifacts/global_banking_case.md
+            artifacts/model
+            artifacts/registry.db
+          if-no-files-found: error
 
   container:
     runs-on: ubuntu-latest
