@@ -1,8 +1,14 @@
 # Banking Risk ML Platform
 
+[![CI](https://github.com/cagataykavas/banking-risk-ml-platform/actions/workflows/ci.yml/badge.svg)](https://github.com/cagataykavas/banking-risk-ml-platform/actions/workflows/ci.yml)
+[![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/downloads/)
+[![Portfolio](https://img.shields.io/badge/case%20study-portfolio-74f0c7)](https://cagataykavas.github.io/#work)
+
 A runnable, synthetic **global-banking risk decision platform** spanning data-safe validation, probability modeling, business policy, model governance, deployment and post-production monitoring.
 
 > **Portfolio reference implementation.** All data, costs, policies and outcomes are synthetic. No customer, employer or confidential banking data is included, and this repository is not presented as a regulatory credit model.
+
+**Recruiter quick scan:** temporal validation · calibrated probabilities · cost-sensitive policy · champion/challenger gates · delayed-label monitoring · drift and segment diagnostics · FastAPI scoring · Docker · CI.
 
 ## Architecture
 
