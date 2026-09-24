@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import math
+from collections.abc import Iterable
 from dataclasses import asdict, dataclass, field
 from statistics import mean
-from typing import Any, Iterable
+from typing import Any
 
 import numpy as np
 
@@ -38,7 +39,7 @@ class RobustPolicyConstraints:
         for name in ("max_review_rate", "min_approval_rate"):
             value = getattr(self, name)
             if isinstance(value, bool) or not isinstance(value, (int, float)):
-                raise ValueError(f"{name} must be numeric")
+                raise TypeError(f"{name} must be numeric")
             if not math.isfinite(value) or not 0 <= value <= 1:
                 raise ValueError(f"{name} must be finite and in [0, 1]")
 
@@ -80,7 +81,7 @@ class RobustPolicyReport:
 
 def _validate_assumptions(assumptions: EconomicsAssumptions) -> None:
     if not isinstance(assumptions, EconomicsAssumptions):
-        raise ValueError("assumptions must be EconomicsAssumptions")
+        raise TypeError("assumptions must be EconomicsAssumptions")
     nonnegative = (
         "approved_account_revenue",
         "loss_given_default",
@@ -90,12 +91,12 @@ def _validate_assumptions(assumptions: EconomicsAssumptions) -> None:
     for name in nonnegative:
         value = getattr(assumptions, name)
         if isinstance(value, bool) or not isinstance(value, (int, float)):
-            raise ValueError(f"{name} must be numeric")
+            raise TypeError(f"{name} must be numeric")
         if not math.isfinite(value) or value < 0:
             raise ValueError(f"{name} must be finite and non-negative")
     capture = assumptions.review_default_capture_rate
     if isinstance(capture, bool) or not isinstance(capture, (int, float)):
-        raise ValueError("review_default_capture_rate must be numeric")
+        raise TypeError("review_default_capture_rate must be numeric")
     if not math.isfinite(capture) or not 0 <= capture <= 1:
         raise ValueError("review_default_capture_rate must be finite and in [0, 1]")
 
@@ -115,7 +116,7 @@ def _grid(values: Iterable[float], name: str) -> tuple[float, ...]:
     parsed: list[float] = []
     for value in values:
         if isinstance(value, bool) or not isinstance(value, (int, float)):
-            raise ValueError(f"{name} must contain numeric values")
+            raise TypeError(f"{name} must contain numeric values")
         number = float(value)
         if not math.isfinite(number) or not 0 <= number <= 1:
             raise ValueError(f"{name} must contain finite values in [0, 1]")
