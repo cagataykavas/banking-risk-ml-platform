@@ -234,6 +234,26 @@ Two explanation approaches are intentionally kept distinct:
 
 The project does not rename an arbitrary heuristic “SHAP.” Attribution is treated as diagnostic evidence, not causality.
 
+The serving explanation evaluates the original application and all **8 independent
+reference perturbations in one 9-row batch**. `/score` reuses that baseline
+probability for routing, reducing `predict_proba` calls from **10 to 1** per
+request without changing the perturbation definition. This is a call-count
+reduction, not a claim of a tenfold latency improvement. Tests compare the batch
+against sequential predictions using both a controlled model and the real
+scikit-learn pipeline.
+
+The classifier must be row-independent and expose binary `classes_` labels `0`
+and `1` (default); the default column is resolved by label rather than position.
+Malformed shape, non-finite/out-of-range probabilities, or rows that do not sum
+to one are rejected, including failures in perturbation rows. `/score` returns
+HTTP 503 instead of routing from invalid model output. Effects within `1e-12` of
+zero are labelled `no_change`; ranking ties retain feature order.
+
+Batch-dependent/stateful predictors are unsupported. Fixed reference values can
+produce infeasible applicants and do not allocate interactions or establish
+causality. A next step is a versioned, feasibility-aware reference policy evaluated
+on out-of-time cohorts.
+
 ## Selection bias and reject inference
 
 `docs/selection_bias_and_reject_inference.md` discusses why outcomes may only be observed for applicants accepted by a historical policy.
