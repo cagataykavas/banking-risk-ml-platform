@@ -5,7 +5,6 @@ from pathlib import Path
 from typing import Literal
 
 import joblib
-import pandas as pd
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
@@ -108,10 +107,12 @@ def score(application: CreditApplication) -> dict:
     record, model = _load_production_model()
     payload = application.model_dump()
     feature_payload = {name: payload[name] for name in NUMERIC + CATEGORICAL}
-    frame = pd.DataFrame([feature_payload])
-    probability = float(model.predict_proba(frame)[0, 1])
+    try:
+        explanation = explain_prediction(model, feature_payload)
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(503, "Production model probability contract failed") from exc
+    probability = explanation["probability"]
     route, reason = route_decision(probability)
-    explanation = explain_prediction(model, feature_payload)
     return {
         "application_id": application.application_id,
         "model_version": record.version,
