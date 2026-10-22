@@ -185,6 +185,12 @@ The monitor:
 
 This separates immediate **input/score drift** monitoring from later **outcome-based performance** monitoring.
 
+`evaluate_mature_vintage_calibration` joins both boundaries without converting missing or
+not-yet-observable outcomes into negatives. It admits only predictions old enough for the configured
+outcome horizon and reporting lag, rejects outcome timestamps before their decisions, and treats
+labels observed after the point-in-time `as_of` as unavailable. The aggregate vintage gate fails
+closed if any matured prediction lacks point-in-time-available outcome evidence.
+
 
 ### 9. Vintage calibration gate
 
