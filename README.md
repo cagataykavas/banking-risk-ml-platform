@@ -185,7 +185,27 @@ The monitor:
 
 This separates immediate **input/score drift** monitoring from later **outcome-based performance** monitoring.
 
-### 9. Stress testing
+`evaluate_mature_vintage_calibration` joins both boundaries without converting missing or
+not-yet-observable outcomes into negatives. It admits only predictions old enough for the configured
+outcome horizon and reporting lag, rejects outcome timestamps before their decisions, and treats
+labels observed after the point-in-time `as_of` as unavailable. The aggregate vintage gate fails
+closed if any matured prediction lacks point-in-time-available outcome evidence.
+
+
+### 9. Vintage calibration gate
+
+`src/vintage_calibration.py` turns matured outcomes into a fail-closed, cohort-level calibration decision:
+
+- observed-versus-expected (O/E) default ratios;
+- signed observed-rate minus expected-rate calibration gaps;
+- Wilson confidence intervals for observed default rates;
+- configurable minimum sample and observed-default counts;
+- deterministic, JSON-ready evidence and reason codes;
+- an aggregate gate that fails when any vintage breaches policy.
+
+This catches temporal calibration failures that a single aggregate Brier score can hide. Thresholds are policy inputs, not regulatory defaults. The Wilson interval quantifies outcome-rate sampling uncertainty; it does not account for model-development uncertainty, dependence between accounts, censoring or macroeconomic regime changes.
+
+### 10. Stress testing
 
 `src/stress_testing.py` applies synthetic deterioration scenarios through:
 
@@ -196,7 +216,7 @@ This separates immediate **input/score drift** monitoring from later **outcome-b
 
 It reports expected-loss uplift and how the fixed approve/review/decline policy behaves under mild, recession and severe-downturn scenarios.
 
-### 10. Feature stability
+### 11. Feature stability
 
 `src/feature_stability.py` measures whether feature importance is reproducible across folds/runs using:
 

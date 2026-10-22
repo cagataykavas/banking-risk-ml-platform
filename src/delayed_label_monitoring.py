@@ -6,6 +6,12 @@ import numpy as np
 import pandas as pd
 from sklearn.metrics import average_precision_score, brier_score_loss, roc_auc_score
 
+from src.vintage_calibration import (
+    VintageCalibrationPolicy,
+    VintageCalibrationReport,
+    evaluate_vintages,
+)
+
 
 @dataclass(frozen=True)
 class LabelMaturityPolicy:
@@ -56,7 +62,11 @@ def mature_predictions(
     pred[decision_time_column] = pd.to_datetime(pred[decision_time_column], utc=True)
     out[outcome_time_column] = pd.to_datetime(out[outcome_time_column], utc=True)
     current = pd.Timestamp(as_of)
-    current = current.tz_localize("UTC") if current.tzinfo is None else current.tz_convert("UTC")
+    current = (
+        current.tz_localize("UTC")
+        if current.tzinfo is None
+        else current.tz_convert("UTC")
+    )
 
     cutoff = current - pd.Timedelta(days=active_policy.maturity_days)
     eligible = pred.loc[pred[decision_time_column] <= cutoff].copy()
@@ -69,8 +79,61 @@ def mature_predictions(
 
     # A matured cohort with a genuinely missing outcome is a data-quality problem,
     # not an implied negative label. Keep it visible and exclude it from metrics.
-    joined["label_missing"] = joined[target_column].isna()
+    has_label = joined[target_column].notna()
+    has_observation_time = joined[outcome_time_column].notna()
+    available_as_of = has_observation_time & joined[outcome_time_column].le(current)
+    invalid_chronology = (
+        has_observation_time
+        & joined[decision_time_column].notna()
+        & joined[outcome_time_column].lt(joined[decision_time_column])
+    )
+    if invalid_chronology.any():
+        raise ValueError("outcome observation cannot precede the model decision")
+    joined["label_unavailable_as_of"] = has_label & ~available_as_of
+    joined["label_missing"] = ~has_label | ~available_as_of
     return joined
+
+
+def evaluate_mature_vintage_calibration(
+    predictions: pd.DataFrame,
+    outcomes: pd.DataFrame,
+    *,
+    as_of: pd.Timestamp,
+    maturity_policy: LabelMaturityPolicy | None = None,
+    calibration_policy: VintageCalibrationPolicy | None = None,
+    frequency: str = "Q",
+    score_column: str = "default_probability",
+    target_column: str = "default_label",
+    decision_time_column: str = "decision_time",
+) -> VintageCalibrationReport:
+    """Evaluate only complete, point-in-time-available matured vintage evidence."""
+    mature = mature_predictions(
+        predictions,
+        outcomes,
+        as_of=as_of,
+        policy=maturity_policy,
+        decision_time_column=decision_time_column,
+        target_column=target_column,
+    )
+    if mature.empty:
+        raise ValueError("no predictions are mature as of the evaluation time")
+    if mature["label_missing"].any():
+        raise ValueError("mature vintage evidence contains unavailable labels")
+
+    decision_time = pd.to_datetime(mature[decision_time_column], utc=True)
+    cohort_time = decision_time.dt.tz_convert("UTC").dt.tz_localize(None)
+    grouped = mature.assign(
+        vintage=cohort_time.dt.to_period(frequency).astype(str)
+    ).groupby("vintage", sort=True)
+    cohorts = [
+        (
+            str(vintage),
+            group[score_column].tolist(),
+            group[target_column].tolist(),
+        )
+        for vintage, group in grouped
+    ]
+    return evaluate_vintages(cohorts, policy=calibration_policy)
 
 
 def _safe_auc(y: np.ndarray, score: np.ndarray) -> float:
@@ -78,7 +141,11 @@ def _safe_auc(y: np.ndarray, score: np.ndarray) -> float:
 
 
 def _safe_ap(y: np.ndarray, score: np.ndarray) -> float:
-    return float(average_precision_score(y, score)) if np.unique(y).size > 1 else float("nan")
+    return (
+        float(average_precision_score(y, score))
+        if np.unique(y).size > 1
+        else float("nan")
+    )
 
 
 def cohort_performance(
@@ -94,10 +161,14 @@ def cohort_performance(
     if labeled.empty:
         return pd.DataFrame(columns=CohortMetric.__annotations__.keys())
 
-    labeled[decision_time_column] = pd.to_datetime(labeled[decision_time_column], utc=True)
+    labeled[decision_time_column] = pd.to_datetime(
+        labeled[decision_time_column], utc=True
+    )
     # Convert through UTC-naive timestamps before period bucketing so pandas does not
     # silently discard timezone metadata while emitting a warning.
-    cohort_time = labeled[decision_time_column].dt.tz_convert("UTC").dt.tz_localize(None)
+    cohort_time = (
+        labeled[decision_time_column].dt.tz_convert("UTC").dt.tz_localize(None)
+    )
     labeled["cohort"] = cohort_time.dt.to_period(frequency).astype(str)
 
     rows: list[CohortMetric] = []
@@ -131,8 +202,13 @@ def maturity_report(
     policy: LabelMaturityPolicy | None = None,
 ) -> dict[str, object]:
     active_policy = policy or DEFAULT_LABEL_MATURITY_POLICY
-    mature = mature_predictions(predictions, outcomes, as_of=as_of, policy=active_policy)
+    mature = mature_predictions(
+        predictions, outcomes, as_of=as_of, policy=active_policy
+    )
     missing = int(mature["label_missing"].sum()) if not mature.empty else 0
+    unavailable_as_of = (
+        int(mature["label_unavailable_as_of"].sum()) if not mature.empty else 0
+    )
     labeled = int((~mature["label_missing"]).sum()) if not mature.empty else 0
     metrics = cohort_performance(mature, min_rows=active_policy.min_rows)
     return {
@@ -141,6 +217,7 @@ def maturity_report(
         "eligible_predictions": len(mature),
         "mature_labels": labeled,
         "missing_mature_labels": missing,
+        "labels_unavailable_as_of": unavailable_as_of,
         "missing_label_rate": float(missing / max(len(mature), 1)),
         "cohorts": metrics.to_dict(orient="records"),
     }
