@@ -263,15 +263,23 @@ It covers parceling, weighting, model-based inference and controlled exploration
 ## Registry, serving and auditability
 
 - persistent SQLite model registry;
-- immutable model metadata;
-- SHA-256 artifact verification;
-- candidate → production → archived lifecycle;
+- insert-only model versions that reject aliases such as `latest` and duplicate identifiers;
+- SHA-256 artifact verification inside the promotion transaction;
+- serialized candidate/staging → production → archived transitions;
+- a database uniqueness constraint that permits exactly one production model;
 - explicit promotion reasons;
+- rollback of both stage changes when the audit-log write fails;
 - FastAPI `/score`, `/models`, `/health` and review endpoints;
 - Docker image;
 - human override / automation-bias evaluation;
 - pytest, Ruff and container-build CI;
 - `MODEL_CARD.md` governance checklist.
+
+Promotion uses `BEGIN IMMEDIATE`, so concurrent writers cannot silently create split-brain
+production state. The previous production model is archived, the candidate is promoted, and the
+audit event is committed as one transaction. If the artifact checksum, stage transition, metadata,
+or audit write is invalid, the operation fails closed without changing the active model. See
+[`docs/model_registry_integrity.md`](docs/model_registry_integrity.md).
 
 ## GCP reference deployment
 
