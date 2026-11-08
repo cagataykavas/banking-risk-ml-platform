@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Literal
 
@@ -11,11 +12,21 @@ from pydantic import BaseModel, Field
 
 from src.explainability import explain_prediction
 from src.model_registry import ModelRegistry
+from src.release_manifest import (
+    ReleaseManifestError,
+    load_public_keyring,
+    promotion_record_sha256,
+    verify_release_manifest_files,
+)
 from src.risk_pipeline import CATEGORICAL, NUMERIC
 
 REGISTRY_PATH = Path(os.getenv("MODEL_REGISTRY_PATH", "artifacts/registry.db"))
 REGISTRY = ModelRegistry(REGISTRY_PATH)
 _MODEL_CACHE: dict[str, object] = {}
+RELEASE_MANIFEST_PATH = os.getenv("MODEL_RELEASE_MANIFEST_PATH")
+RELEASE_SIGNATURE_PATH = os.getenv("MODEL_RELEASE_SIGNATURE_PATH")
+RELEASE_PUBLIC_KEYS = os.getenv("MODEL_RELEASE_PUBLIC_KEYS")
+RELEASE_MAX_AGE_SECONDS = os.getenv("MODEL_RELEASE_MAX_AGE_SECONDS", "2592000")
 
 app = FastAPI(
     title="Banking Risk ML Platform",
@@ -46,13 +57,50 @@ class HumanDecision(BaseModel):
 REVIEW_LOG: list[dict] = []
 
 
+def _verify_configured_release(record) -> dict | None:
+    configured = (
+        RELEASE_MANIFEST_PATH,
+        RELEASE_SIGNATURE_PATH,
+        RELEASE_PUBLIC_KEYS,
+    )
+    if not any(configured):
+        return None
+    if not all(configured):
+        raise ReleaseManifestError("RELEASE_CONFIGURATION_INCOMPLETE")
+    try:
+        max_age_seconds = int(RELEASE_MAX_AGE_SECONDS)
+    except (TypeError, ValueError) as exc:
+        raise ReleaseManifestError("MAX_AGE_INVALID") from exc
+    promotion_digest = promotion_record_sha256(
+        REGISTRY.promotion_history(record.version), record.version
+    )
+    return verify_release_manifest_files(
+        Path(RELEASE_MANIFEST_PATH),
+        Path(RELEASE_SIGNATURE_PATH),
+        keyring=load_public_keyring(RELEASE_PUBLIC_KEYS),
+        expected_model_version=record.version,
+        expected_artifact_sha256=record.sha256,
+        expected_promotion_record_sha256=promotion_digest,
+        now=datetime.now(UTC),
+        max_age_seconds=max_age_seconds,
+    )
+
+
 def _load_production_model():
     try:
         record = REGISTRY.latest("production")
     except KeyError as exc:
         raise HTTPException(503, "No production model is registered") from exc
     if not REGISTRY.verify_artifact(record.version):
-        raise HTTPException(503, "Production model artifact checksum verification failed")
+        raise HTTPException(
+            503, "Production model artifact checksum verification failed"
+        )
+    try:
+        _verify_configured_release(record)
+    except ReleaseManifestError as exc:
+        raise HTTPException(
+            503, "Production release manifest verification failed"
+        ) from exc
     if record.version not in _MODEL_CACHE:
         _MODEL_CACHE.clear()
         _MODEL_CACHE[record.version] = joblib.load(record.artifact_path)
@@ -90,12 +138,27 @@ def readiness() -> dict:
             "artifact_verified": False,
             "reason": "production artifact checksum verification failed",
         }
-    return {
+    try:
+        release_receipt = _verify_configured_release(record)
+    except ReleaseManifestError:
+        return {
+            "status": "degraded",
+            "ready": False,
+            "model_version": record.version,
+            "artifact_verified": True,
+            "release_manifest_verified": False,
+            "reason": "production release manifest verification failed",
+        }
+    response = {
         "status": "ready",
         "ready": True,
         "model_version": record.version,
         "artifact_verified": True,
     }
+    if release_receipt is not None:
+        response["release_manifest_verified"] = True
+        response["release_manifest_sha256"] = release_receipt["manifest_sha256"]
+    return response
 
 
 @app.get("/models")

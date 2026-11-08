@@ -46,5 +46,8 @@ invalid metadata and transitions, concurrency conflicts, and transactional stora
 - Promotion checks artifact integrity and lifecycle state, not business-model quality. Calibration,
   discrimination, fairness and operational gates remain separate inputs to the decision.
 
-The next increment is to bind the point-in-time calibration report, source snapshot digest and
-promotion decision into one signed release manifest.
+The optional production serving boundary now binds the registered artifact, point-in-time
+validation report digest, source snapshot digest and committed promotion record into one signed
+release manifest. See [`signed_release_manifest.md`](signed_release_manifest.md) for the signing,
+verification and key-rotation contract. A production deployment still needs to require that
+boundary and provide an external KMS/HSM-backed signer.

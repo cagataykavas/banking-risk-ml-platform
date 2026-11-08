@@ -1,4 +1,5 @@
 fastapi>=0.116
+cryptography>=45.0
 joblib>=1.4
 numpy>=2.0
 pandas>=2.2
