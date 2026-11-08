@@ -269,6 +269,8 @@ It covers parceling, weighting, model-based inference and controlled exploration
 - a database uniqueness constraint that permits exactly one production model;
 - explicit promotion reasons;
 - rollback of both stage changes when the audit-log write fails;
+- optional Ed25519 release manifests binding model bytes, validation evidence, source snapshots and
+  the committed production transition;
 - FastAPI `/score`, `/models`, `/health` and review endpoints;
 - Docker image;
 - human override / automation-bias evaluation;
@@ -280,6 +282,12 @@ production state. The previous production model is archived, the candidate is pr
 audit event is committed as one transaction. If the artifact checksum, stage transition, metadata,
 or audit write is invalid, the operation fails closed without changing the active model. See
 [`docs/model_registry_integrity.md`](docs/model_registry_integrity.md).
+
+When release-manifest settings are present, `/ready` and `/score` also verify a detached Ed25519
+signature, release freshness, registered artifact digest, immutable version and the exact committed
+production transition before model deserialization. The serving image receives public keys only;
+signing remains an external release responsibility. See
+[`docs/signed_release_manifest.md`](docs/signed_release_manifest.md).
 
 ## GCP reference deployment
 
