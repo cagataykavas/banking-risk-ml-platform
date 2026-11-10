@@ -2,7 +2,7 @@
 
 A banking model is often trained on outcomes that are only observed for customers who passed an earlier policy. That means the labeled population may be **selected by the historical decision process** rather than representative of every future applicant.
 
-This document is intentionally an interview/research note, not an implementation claiming to solve reject inference.
+This document is intentionally assumption-aware guidance, not a claim that reject inference can recover unknown outcomes. The repository now includes a bounded inverse-propensity evaluation audit for cases where a reviewed historical selection model is available.
 
 ## Why the problem appears
 
@@ -44,6 +44,15 @@ Assign inferred outcomes to rejected cases based on score bands or observed even
 
 Estimate the probability that an observation is accepted/observed and use inverse-probability-style weights. This requires a credible model of the historical selection mechanism and can become unstable for regions with very low acceptance probability.
 
+`src/selection_bias.py` makes that instability visible before weighted metrics can be treated as evidence. It compares ordinary booked-sample metrics with self-normalized inverse-propensity metrics and rejects the evidence policy when:
+
+- historical acceptance propensities fall below a declared overlap floor;
+- inverse weights collapse the effective sample size;
+- one observation dominates the normalized weight mass; or
+- row, event or non-event evidence is insufficient.
+
+The report contains only aggregate metrics, diagnostics, policy values and a canonical SHA-256 digest. It never exports applicant rows. The supplied propensities remain a trust boundary: the audit validates their numerical support, not whether the historical selection model is correctly specified.
+
 ### 4. Semi-supervised / model-based methods
 
 Treat rejected outcomes as latent and iterate between outcome estimation and model fitting. These methods can look sophisticated while still being driven by unverifiable assumptions.
@@ -71,6 +80,7 @@ If asked *"How would you handle rejected applications with no labels?"*, a stron
 - `src/segment_stability.py` — coverage/performance by country or segment;
 - `src/champion_challenger.py` — guarded model promotion;
 - `src/stress_testing.py` — policy robustness under deterioration scenarios.
+- `src/selection_bias.py` — bounded selection-weighted evaluation and overlap diagnostics.
 
 ## Important distinction
 

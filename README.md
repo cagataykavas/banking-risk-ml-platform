@@ -8,7 +8,7 @@ A runnable, synthetic **global-banking risk decision platform** spanning data-sa
 
 > **Portfolio reference implementation.** All data, costs, policies and outcomes are synthetic. No customer, employer or confidential banking data is included, and this repository is not presented as a regulatory credit model.
 
-**Recruiter quick scan:** temporal validation · calibrated probabilities · cost-sensitive policy · champion/challenger gates · delayed-label monitoring · drift and segment diagnostics · FastAPI scoring · Docker · CI.
+**Recruiter quick scan:** temporal validation · calibrated probabilities · selection-bias diagnostics · cost-sensitive policy · champion/challenger gates · delayed-label monitoring · drift and segment diagnostics · FastAPI scoring · Docker · CI.
 
 ## Architecture
 
@@ -208,6 +208,19 @@ It reports expected-loss uplift and how the fixed approve/review/decline policy 
 
 This is useful when a model looks strong overall but its apparent drivers change wildly between periods.
 
+### 11. Selection-aware evaluation
+
+`src/selection_bias.py` compares ordinary booked-sample probability metrics with
+self-normalized inverse-propensity estimates when reviewed historical acceptance
+propensities are available. It fails the evidence policy for poor propensity
+overlap, collapsed effective sample size, dominant observations, or insufficient
+class support, and emits a deterministic aggregate-only evidence digest.
+
+This is a sensitivity analysis under explicit selection-model assumptions, not a
+reject-inference claim. It does not impute rejected outcomes or prove that the
+historical acceptance model captured every selection driver. See
+`docs/selection_bias_and_reject_inference.md` for the trust boundary.
+
 ## Advanced research layer
 
 Install optional dependencies:
@@ -314,4 +327,4 @@ This repository is the **risk/model-decision layer** of a larger public stack:
 
 ## Topics this repository can support in an interview
 
-**Temporal leakage · probability calibration · ROC vs PR-AUC · KS · lift · Brier · expected loss · PD/LGD/EAD · threshold economics · expected-value policy optimization · human-review capacity · champion/challenger · XGBoost · LightGBM · Optuna · class imbalance · SMOTE limitations · SHAP · WoE/IV · PSI · delayed labels · segment stability · stress testing · reject inference · model registry · FastAPI · Docker · CI/CD · GCP · Cloud Run · BigQuery · Pub/Sub · Artifact Registry · auditability.**
+**Temporal leakage · probability calibration · selection-bias diagnostics · inverse-propensity weighting · effective sample size · ROC vs PR-AUC · KS · lift · Brier · expected loss · PD/LGD/EAD · threshold economics · expected-value policy optimization · human-review capacity · champion/challenger · XGBoost · LightGBM · Optuna · class imbalance · SMOTE limitations · SHAP · WoE/IV · PSI · delayed labels · segment stability · stress testing · reject inference · model registry · FastAPI · Docker · CI/CD · GCP · Cloud Run · BigQuery · Pub/Sub · Artifact Registry · auditability.**
