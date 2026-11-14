@@ -15,6 +15,12 @@ from sklearn.metrics import average_precision_score, brier_score_loss, roc_auc_s
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
 
+from src.feature_contract import (
+    credit_application_contract,
+    persist_contract_evidence,
+    validate_frame,
+)
+
 NUMERIC = ["age", "income", "debt", "utilization", "late_payments", "account_age_months"]
 CATEGORICAL = ["employment", "housing"]
 TARGET = "defaulted"
@@ -51,6 +57,13 @@ def temporal_split(df: pd.DataFrame, test_fraction: float = .2):
 
 def train(output: Path, rows: int = 12000) -> dict[str, float]:
     df = make_dataset(rows)
+    feature_frame = df[NUMERIC + CATEGORICAL]
+    contract = credit_application_contract()
+    contract_report = validate_frame(feature_frame, contract)
+    persist_contract_evidence(output, contract, contract_report)
+    if not contract_report.valid:
+        codes = sorted({issue.code for issue in contract_report.issues})
+        raise ValueError(f"feature contract validation failed: {codes}")
     train_df, test_df = temporal_split(df)
     pipe = build_pipeline()
     pipe.fit(train_df[NUMERIC + CATEGORICAL], train_df[TARGET])

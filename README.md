@@ -8,7 +8,7 @@ A runnable, synthetic **global-banking risk decision platform** spanning data-sa
 
 > **Portfolio reference implementation.** All data, costs, policies and outcomes are synthetic. No customer, employer or confidential banking data is included, and this repository is not presented as a regulatory credit model.
 
-**Recruiter quick scan:** temporal validation · calibrated probabilities · cost-sensitive policy · champion/challenger gates · delayed-label monitoring · drift and segment diagnostics · FastAPI scoring · Docker · CI.
+**Recruiter quick scan:** versioned feature contracts · temporal validation · calibrated probabilities · cost-sensitive policy · champion/challenger gates · delayed-label monitoring · drift and segment diagnostics · FastAPI scoring · Docker · CI.
 
 ## Architecture
 
@@ -51,6 +51,7 @@ This repository makes those concerns executable instead of hiding them in presen
 
 ### 1. Modeling and out-of-time validation
 
+- versioned feature-contract admission before model fitting;
 - deterministic synthetic credit-risk data generation;
 - numeric/categorical preprocessing;
 - `HistGradientBoostingClassifier` production-style baseline;
@@ -65,6 +66,14 @@ This repository makes those concerns executable instead of hiding them in presen
 historical train ------> gap -> future validation
 historical train grows --------> gap -> later validation
 ```
+
+The training entry point first validates the full feature batch against
+`credit-application-v1`. The contract rejects missing, duplicate or unexpected columns;
+incompatible dtypes; non-finite and out-of-domain numerics; excessive missingness; and
+unknown-category rates. It then writes both the canonical contract SHA-256 and a
+privacy-reduced validation receipt beside the model artifact. This separates malformed
+inputs from genuine population drift and gives CI/deployment tooling an exact schema
+commitment to verify.
 
 ### 2. Banking-oriented probability metrics
 
