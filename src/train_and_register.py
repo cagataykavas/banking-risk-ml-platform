@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 from src.model_registry import ModelRegistry
@@ -20,7 +20,7 @@ def main() -> None:
     args = parser.parse_args()
 
     metrics = train(args.artifact_dir, rows=args.rows)
-    version = datetime.now(timezone.utc).strftime("risk-%Y%m%d-%H%M%S")
+    version = datetime.now(UTC).strftime("risk-%Y%m%d-%H%M%S")
     registry = ModelRegistry(args.registry)
     record = registry.register(
         version=version,
