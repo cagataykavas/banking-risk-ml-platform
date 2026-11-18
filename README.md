@@ -73,13 +73,21 @@ historical train grows --------> gap -> later validation
 - ROC-AUC;
 - average precision / PR-AUC;
 - KS statistic;
-- Lift@10%;
+- tie-neutral Lift@10% and adverse-event capture;
+- exact lower/upper lift, precision and capture bounds when a score tie crosses review capacity;
 - Brier score;
 - expected calibration error;
 - calibration MAE;
 - approval / review / bad-rate operating curves.
 
 The repository treats discrimination, probability quality and business policy as different questions.
+
+`capacity_at_fraction` never lets input row order silently decide which applications in an equal-score
+group enter a capacity-limited queue. It proportionally allocates the boundary group for the central
+estimate and reports the exact best/worst range across all possible within-tie orderings. Wide bounds
+are therefore visible model-resolution evidence, not hidden behind an arbitrary sort order. A real
+review queue still needs a governed secondary priority key; these bounds describe the uncertainty
+before that policy is supplied.
 
 ### 3. Probability calibration
 
