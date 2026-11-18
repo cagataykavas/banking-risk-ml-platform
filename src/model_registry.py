@@ -4,7 +4,7 @@ import hashlib
 import json
 import sqlite3
 from dataclasses import asdict, dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -81,7 +81,7 @@ class ModelRegistry:
             version=version,
             artifact_path=str(path),
             sha256=self.checksum(path),
-            created_at=datetime.now(timezone.utc).isoformat(),
+            created_at=datetime.now(UTC).isoformat(),
             metrics=metrics,
             stage=stage,
         )
@@ -130,7 +130,7 @@ class ModelRegistry:
 
     def promote(self, version: str, new_stage: str, reason: str) -> ModelVersion:
         current = self.get(version)
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(UTC).isoformat()
         with self._connect() as con:
             if new_stage == "production":
                 con.execute(
